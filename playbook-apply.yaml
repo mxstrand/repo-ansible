@@ -28,7 +28,7 @@
       stat:
         path: "{{ repo_path }}/.git"
       register: git_dir
-      failed_when: git_dir.stat.isdir == False
+      failed_when: git_dir.stat.isdir is not defined || git_dir.stat.isdir == False
 
     - name: check if repo.yaml exists in repo_path
       stat:
