@@ -4,13 +4,17 @@ name: Review
 on:
   pull_request_target:
     types: [opened, reopened, synchronize]
+  # Inert unless the repo enables a merge queue via a branch ruleset; then required checks run on queue branches too.
+  merge_group:
   workflow_call:
 
 jobs:
   commit-conventions:
     runs-on: ubuntu-latest
-    # Don't enforce commit conventions checks for Dependabot
-    if: github.actor != 'dependabot[bot]'
+    # Don't enforce commit conventions checks for Dependabot.
+    # merge_group events carry no pull_request payload, which these actions need to look up the PR's commits;
+    # commit messages were already checked on the PR itself.
+    if: github.event_name != 'merge_group' && github.actor != 'dependabot[bot]'
     continue-on-error: true
     steps:
         # v6 https://github.com/actions/checkout/commit/de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -41,6 +45,8 @@ jobs:
 {% if enable_reviewdog %}
   code-quality:
     runs-on: ubuntu-latest
+    # reviewdog's pull-request mode needs a pull request context, which merge queue branches don't have
+    if: github.event_name != 'merge_group'
     steps:
         # v6 https://github.com/actions/checkout/commit/de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -55,6 +61,9 @@ jobs:
 {% for followup_workflow in followup_workflows[workflow_group] %}
 
   [[ followup_workflow.name ]]-followup:
+    # On merge_group events commit-conventions is skipped, but the followup checks must still run
+    # and report so the merge queue can merge. Dependabot PRs keep skipping followups as before.
+    if: ${{ !cancelled() && (needs.commit-conventions.result != 'skipped' || github.event_name == 'merge_group') }}
     needs: commit-conventions
     secrets: inherit
     uses: ./[[ followup_workflow.path_from_root ]]
